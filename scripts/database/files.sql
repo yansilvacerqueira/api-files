@@ -10,5 +10,5 @@ CREATE TABLE files (
   deleted BOOL NOT NULL DEFAULT false,
   PRIMARY KEY(id),
   CONSTRAINT fk_users FOREIGN KEY(owner_id) REFERENCES users(id),
-  CONSTRAINT fk_folders FOREIGN KEY(folder_id) REFERENCES folders(id),
+  CONSTRAINT fk_folders FOREIGN KEY(folder_id) REFERENCES folders(id)
 )

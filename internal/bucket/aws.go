@@ -7,6 +7,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
 type AWSconfig struct {
@@ -22,24 +24,78 @@ type AWSSession struct {
 	bucketUpload   string
 }
 
-// Download method - yet to be implemented
-func (a *AWSSession) Download(src string, dest string) (*os.File, error) {
-	return nil, fmt.Errorf("Download not implemented for AWSSession")
+// Download method - Downloads a file from S3 bucket to the specified destination
+func (awsSession *AWSSession) Download(src string, dest string) (*os.File, error) {
+	// Create a file for the destination
+	file, err := os.Create(dest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create destination file: %v", err)
+	}
+	defer file.Close()
+
+	// Initialize the S3 downloader
+	downloader := s3manager.NewDownloader(awsSession.session)
+
+	// Perform the download
+	_, err = downloader.Download(file, &s3.GetObjectInput{
+		Bucket: aws.String(awsSession.bucketDownload),
+		Key:    aws.String(src),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error downloading file from S3: %v", err)
+	}
+
+	return file, nil
 }
 
-// Remove (delete) method - yet to be implemented
-func (a *AWSSession) Remove(src string) error {
-	return fmt.Errorf("Remove not implemented for AWSSession")
+// Remove (delete) method - Deletes a file from the S3 bucket
+func (awsSession *AWSSession) Remove(src string) error {
+	// Initialize the S3 service client
+	svc := s3.New(awsSession.session)
+
+	// Perform the delete operation
+	_, err := svc.DeleteObject(&s3.DeleteObjectInput{
+		Bucket: aws.String(awsSession.bucketDownload),
+		Key:    aws.String(src),
+	})
+	if err != nil {
+		return fmt.Errorf("error deleting file from S3: %v", err)
+	}
+
+	// Wait until the object no longer exists
+	err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
+		Bucket: aws.String(awsSession.bucketDownload),
+		Key:    aws.String(src),
+	})
+	if err != nil {
+		return fmt.Errorf("error waiting for object deletion: %v", err)
+	}
+
+	return nil
 }
 
-// Upload method - yet to be implemented
-func (a *AWSSession) Upload(file io.Reader, key string) error {
-	return fmt.Errorf("Upload not implemented for AWSSession")
+// Upload method - Uploads a file to the S3 bucket
+func (awsSession *AWSSession) Upload(file io.Reader, key string) error {
+	// Initialize the S3 uploader
+	uploader := s3manager.NewUploader(awsSession.session)
+
+	// Perform the upload operation
+	_, err := uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(awsSession.bucketUpload),
+		Key:    aws.String(key),
+		Body:   file, // Ensure the file is uploaded
+	})
+	if err != nil {
+		return fmt.Errorf("error uploading file to S3: %v", err)
+	}
+
+	return nil
 }
 
 // Function to create a new AWS session
 // Handles AWS session initialization and configuration
 func newAWSSession(cfg AWSconfig) (*AWSSession, error) {
+	// Create a new AWS session
 	sess, err := session.NewSession(&cfg.Config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating AWS session: %v", err)

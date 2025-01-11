@@ -6,64 +6,63 @@ import (
 )
 
 // QueueType defines supported queue implementations
-type QueueType int
+type QueueImplementation int
 
 const (
-	RabbitMQ QueueType = iota // Currently only RabbitMQ is supported
+	RabbitMQ QueueImplementation = iota
 )
 
 // QueueConnection defines the interface for queue operations
-type QueueConnection interface {
-	Publish([]byte) error
-	Consume(chan<- QueueDto) error
+type QueueOperations interface {
+	PublishMessage([]byte) error
+	ReceiveMessage(chan<- QueueMessage) error
 }
 
-// Queue wraps a queue connection implementation
+// Queue encapsulates a specific queue connection implementation
 type Queue struct {
-	qc QueueConnection
+	connection QueueOperations
 }
 
-// New creates a new Queue instance based on the specified type
-func New(qt QueueType, cfg any) (*Queue, error) {
-	var q Queue
+// NewQueue creates a new Queue instance based on the specified implementation type
+func NewQueue(queueType QueueImplementation, config any) (*Queue, error) {
+	var queue Queue
 
-	rt := reflect.TypeOf(cfg)
+	configType := reflect.TypeOf(config)
 
-	switch qt {
-
+	switch queueType {
 	case RabbitMQ:
-		if rt.Name() != "RabbitMQConfig" {
+		if configType.Name() != "RabbitMQConfig" {
 			return nil, fmt.Errorf("config must be of type RabbitMQConfig")
 		}
 
-		conn, err := newRabbitConn(cfg.(RabbitMQConfig))
+		connection, err := createRabbitMQConnection(config.(RabbitMQConfig))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create RabbitMQ connection: %w", err)
 		}
 
-		q.qc = conn
+		queue.connection = connection
 
 	default:
 		return nil, fmt.Errorf("unsupported queue type")
 	}
 
-	return &q, nil
+	return &queue, nil
 }
 
-// Publish sends a message to the queue
-func (q *Queue) Publish(msg []byte) error {
-	if q.qc == nil {
+// PublishMessage sends a message to the queue
+func (q *Queue) PublishMessage(msg []byte) error {
+	if q.connection == nil {
 		return fmt.Errorf("queue connection not initialized")
 	}
 
-	return q.qc.Publish(msg)
+	return q.connection.PublishMessage(msg)
 }
 
-// Consume reads messages from the queue and sends them to the provided channel
-func (q *Queue) Consume(c chan<- QueueDto) error {
-	if q.qc == nil {
+// ReceiveMessage reads messages from the queue and sends them to the provided channel
+func (q *Queue) ReceiveMessage(c chan<- QueueMessage) error {
+	if q.connection == nil {
 		return fmt.Errorf("queue connection not initialized")
 	}
 
-	return q.qc.Consume(c)
+	return q.connection.ReceiveMessage(c)
 }

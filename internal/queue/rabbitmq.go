@@ -11,25 +11,25 @@ import (
 
 type RabbitMQConfig struct {
 	URL       string
-	TopicName string
-	Timeout   time.Time
+	QueueName string
+	Timeout   time.Duration
 }
 
-type RabbitConnection struct {
-	cfg  RabbitMQConfig
-	conn *amqp091.Connection
+type RabbitMQConnection struct {
+	config RabbitMQConfig
+	conn   *amqp091.Connection
 }
 
-// Publish implements message publishing for RabbitMQ
-func (rc *RabbitConnection) Publish(msg []byte) error {
-	c, err := rc.conn.Channel()
+// PublishMessage sends a message to the RabbitMQ queue
+func (rc *RabbitMQConnection) PublishMessage(msg []byte) error {
+	channel, err := rc.conn.Channel()
 	if err != nil {
 		return fmt.Errorf("failed to create channel: %w", err)
 	}
 
-	defer c.Close()
+	defer channel.Close()
 
-	mp := amqp091.Publishing{
+	messageProperties := amqp091.Publishing{
 		DeliveryMode: amqp091.Persistent,
 		Timestamp:    time.Now(),
 		ContentType:  "text/plain",
@@ -39,20 +39,20 @@ func (rc *RabbitConnection) Publish(msg []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	return c.PublishWithContext(ctx, "", rc.cfg.TopicName, false, false, mp)
+	return channel.PublishWithContext(ctx, "", rc.config.QueueName, false, false, messageProperties)
 }
 
-// Consume implements message consumption for RabbitMQ
-func (rc *RabbitConnection) Consume(c chan<- QueueDto) error {
-	ch, err := rc.conn.Channel()
+// ReceiveMessage listens for messages from the RabbitMQ queue
+func (rc *RabbitMQConnection) ReceiveMessage(c chan<- QueueMessage) error {
+	channel, err := rc.conn.Channel()
 	if err != nil {
 		return fmt.Errorf("failed to create channel: %w", err)
 	}
 
-	defer ch.Close()
+	defer channel.Close()
 
-	q, err := ch.QueueDeclare(
-		rc.cfg.TopicName,
+	queue, err := channel.QueueDeclare(
+		rc.config.QueueName,
 		false, // durable
 		false, // autoDelete
 		false, // exclusive
@@ -63,8 +63,8 @@ func (rc *RabbitConnection) Consume(c chan<- QueueDto) error {
 		return fmt.Errorf("failed to declare queue: %w", err)
 	}
 
-	msgs, err := ch.Consume(
-		q.Name,
+	messages, err := channel.Consume(
+		queue.Name,
 		"",    // consumer
 		true,  // autoAck
 		false, // exclusive
@@ -76,29 +76,29 @@ func (rc *RabbitConnection) Consume(c chan<- QueueDto) error {
 		return fmt.Errorf("failed to start consuming: %w", err)
 	}
 
-	for d := range msgs {
-		var dto QueueDto
+	for msg := range messages {
+		var queueMessage QueueMessage
 
-		if err := dto.Unmarshal(d.Body); err != nil {
+		if err := queueMessage.FromJSON(msg.Body); err != nil {
 			log.Printf("failed to unmarshal message: %v", err)
 			continue
 		}
 
-		c <- dto
+		c <- queueMessage
 	}
 
 	return nil
 }
 
-// newRabbitConn creates a new RabbitMQ connection
-func newRabbitConn(cfg RabbitMQConfig) (*RabbitConnection, error) {
+// createRabbitMQConnection initializes a new RabbitMQ connection
+func createRabbitMQConnection(cfg RabbitMQConfig) (*RabbitMQConnection, error) {
 	conn, err := amqp091.Dial(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
 
-	return &RabbitConnection{
-		cfg:  cfg,
-		conn: conn,
+	return &RabbitMQConnection{
+		config: cfg,
+		conn:   conn,
 	}, nil
 }

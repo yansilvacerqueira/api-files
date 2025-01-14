@@ -1,4 +1,4 @@
-package users
+package entity
 
 import (
 	"errors"
@@ -28,7 +28,6 @@ type User struct {
 	LastLogin *time.Time
 }
 
-// UserStatus represents the current state of a user
 type UserStatus struct {
 	IsActive    bool
 	IsLocked    bool
@@ -39,7 +38,6 @@ type UserStatus struct {
 func NewUser(fullName, email, password string) (*User, error) {
 	now := time.Now()
 
-	// Validate and sanitize inputs
 	fullName = strings.TrimSpace(fullName)
 	email = strings.TrimSpace(strings.ToLower(email))
 
@@ -47,7 +45,7 @@ func NewUser(fullName, email, password string) (*User, error) {
 		return nil, ErrEmptyFullName
 	}
 
-	if err := validateEmail(email); err != nil {
+	if err := ValidateEmail(email); err != nil {
 		return nil, err
 	}
 
@@ -86,7 +84,6 @@ func (u *User) SetPassword(password string) error {
 
 func (u *User) ValidatePassword(password string) bool {
 	err := bcrypt.CompareHashAndPassword(u.Password, []byte(password))
-
 	return err == nil
 }
 
@@ -105,7 +102,7 @@ func (u *User) IsDeleted() bool {
 	return u.Deleted
 }
 
-func validateEmail(email string) error {
+func ValidateEmail(email string) error {
 	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
 		return ErrInvalidEmail
 	}
@@ -113,7 +110,6 @@ func validateEmail(email string) error {
 	return nil
 }
 
-// validatePassword ensures password meets security requirements
 func validatePassword(password string) error {
 	if len(password) < 8 {
 		return ErrInvalidPassword
@@ -146,7 +142,6 @@ func validatePassword(password string) error {
 	return nil
 }
 
-// Sanitize removes sensitive data for safe transmission
 func (u *User) Sanitize() map[string]interface{} {
 	return map[string]interface{}{
 		"id":         u.ID,
